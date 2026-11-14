@@ -1,0 +1,12 @@
+.env
+results/
+web_sessions/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# 本地临时测试文件（_t_*.py / _t_*.png 等）
+_t_*
+
+# 素材图片：来自游戏的截图，属于第三方内容，不随代码公开
+assets/

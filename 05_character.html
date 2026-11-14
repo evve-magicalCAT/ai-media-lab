@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>角色抠图 · 白底提取</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --panel:#fff; --line:#e3e7ec; --text:#1b2430; --muted:#6b7684;
+    --brand:#2f6f4f; --brand-soft:#eaf3ee; --accent:#2563c9; --accent-soft:#eaf1fd;
+    --warn:#8a5a00; --warn-soft:#fdf3e2; --error:#a32c2c; --error-soft:#fdecec;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:20px 16px 48px;background:var(--bg);color:var(--text);
+       font:14px/1.6 "Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+  .wrap{max-width:1280px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);margin-bottom:18px}
+  .cols{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;align-items:start}
+  @media (max-width:960px){.cols{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+        padding:16px;margin-bottom:16px}
+  .card h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .step{display:inline-flex;width:20px;height:20px;border-radius:50%;background:var(--brand);
+        color:#fff;font-size:12px;align-items:center;justify-content:center;flex:none}
+  .drop{border:2px dashed var(--line);border-radius:var(--radius);padding:26px;text-align:center;
+        color:var(--muted);cursor:pointer;transition:.15s;background:#fafbfc}
+  .drop:hover,.drop.over{border-color:var(--brand);background:var(--brand-soft);color:var(--brand)}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid var(--line);
+         background:#fff;color:var(--text);cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+  button.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  button.primary:hover:not(:disabled){background:#275c41;color:#fff}
+  button.ghost{background:var(--accent-soft);border-color:#c9dcf8;color:var(--accent)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  label.inline{display:flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer}
+  .stage{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;
+         background:#fbfcfd;min-height:220px;display:flex;align-items:center;justify-content:center}
+  canvas{display:block;max-width:100%;cursor:crosshair;touch-action:none}
+  .hint{color:var(--muted);font-size:12.5px;margin-top:8px}
+  .picks{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+  .pick{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--line);
+        border-radius:8px;background:#fafbfc}
+  .pick.on{border-color:var(--brand);background:var(--brand-soft)}
+  .pick .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pick .box{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+  .out{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+  .out figure{margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+  .out img{display:block;width:100%;height:230px;object-fit:contain;background:
+    repeating-conic-gradient(#eef1f4 0 25%,#fff 0 50%) 50%/16px 16px}
+  .out figcaption{padding:7px 9px;font-size:12.5px;border-top:1px solid var(--line);color:var(--muted)}
+  .out figcaption b{color:var(--text);display:block;font-weight:600}
+  .msg{padding:9px 12px;border-radius:8px;margin-bottom:12px;display:none;white-space:pre-wrap}
+  .msg.show{display:block}
+  .msg.info{background:var(--accent-soft);color:#1d4ed8}
+  .msg.warn{background:var(--warn-soft);color:var(--warn)}
+  .msg.err{background:var(--error-soft);color:var(--error)}
+  .msg.ok{background:var(--brand-soft);color:var(--brand)}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(0,0,0,.18);
+        border-top-color:var(--brand);border-radius:50%;animation:sp .7s linear infinite;
+        vertical-align:-2px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .meta{color:var(--muted);font-size:12.5px}
+  details summary{cursor:pointer;color:var(--muted);font-size:12.5px;margin-top:10px}
+  code{background:#f1f3f6;padding:1px 5px;border-radius:4px;font-size:12.5px}
+  /* ---- 两张图一致性校验 ---- */
+  .cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:720px){.cmp-grid{grid-template-columns:1fr}}
+  .cmp-slot{border:1px solid var(--line);border-radius:8px;padding:10px;background:#fafbfc}
+  .cmp-slot .label{font-size:12.5px;color:var(--muted);margin-bottom:8px}
+  .cmp-drop{border:2px dashed var(--line);border-radius:8px;padding:18px;text-align:center;
+            color:var(--muted);cursor:pointer;font-size:13px;background:#fff}
+  .cmp-drop:hover,.cmp-drop.over{border-color:var(--brand);background:var(--brand-soft);color:var(--brand)}
+  .cmp-preview{display:none;width:100%;max-height:200px;object-fit:contain;background:#fff;border-radius:6px}
+  .cmp-name{font-size:12.5px;color:var(--muted);margin-top:6px;word-break:break-all;min-height:18px}
+  .verdict{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:15px;
+           padding:7px 14px;border-radius:999px}
+  .verdict.same{background:var(--brand-soft);color:var(--brand)}
+  .verdict.different{background:var(--error-soft);color:var(--error)}
+  .verdict.uncertain{background:var(--warn-soft);color:var(--warn)}
+  .cmp-body{margin-top:12px}
+  .cmp-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+  @media (max-width:720px){.cmp-cols{grid-template-columns:1fr}}
+  .cmp-list{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--text)}
+  .cmp-list li{margin:3px 0}
+  .cmp-list.diff li{color:var(--error)}
+  .swatches{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+  .sw{width:20px;height:20px;border-radius:4px;border:1px solid rgba(0,0,0,.12)}
+  .conf-bar{height:8px;border-radius:999px;background:#eef1f4;overflow:hidden;margin-top:6px}
+  .conf-bar>i{display:block;height:100%;background:var(--brand)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>角色抠图 · 只留角色，背景换成空白</h1>
+  <div class="sub">第 1 步上传图片 → 第 2 步框选角色（自动或手动）→ 第 3 步生成白底图。密钥只留在本机服务端。</div>
+  <div id="msg" class="msg"></div>
+
+  <div class="cols">
+    <!-- 左栏：提交 + 框选 -->
+    <div>
+      <div class="card">
+        <h2><span class="step">1</span>提交图像</h2>
+        <div id="drop" class="drop">
+          点这里选择图片，或把图片拖进来<br>
+          <span class="meta">支持 PNG / JPEG / WEBP，最大 20 MiB</span>
+        </div>
+        <input id="file" type="file" accept="image/*" hidden>
+        <div id="srcMeta" class="meta" style="margin-top:8px"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">2</span>框选角色</h2>
+        <div class="row" style="margin-bottom:10px">
+          <button id="btnAuto" class="ghost" disabled>自动框选角色</button>
+          <button id="btnClear" disabled>清空框</button>
+          <label class="inline"><input id="chkAll" type="checkbox" checked> 自动框选全部候选</label>
+        </div>
+        <div class="row" style="margin-bottom:10px">
+          <span class="meta">外扩余量</span>
+          <input id="margin" type="range" min="0.6" max="1.6" step="0.05" value="1" style="flex:1;min-width:120px">
+          <span id="marginVal" class="meta">1.00×</span>
+        </div>
+        <div class="stage"><canvas id="cv" width="640" height="360"></canvas></div>
+        <div class="hint">手动框选：在图上按住左键拖动即可画一个框；画完可以继续拖出更多框。虚线框是自动识别的结果。</div>
+        <div id="picks" class="picks"></div>
+      </div>
+    </div>
+
+    <!-- 右栏：输出 -->
+    <div>
+      <div class="card">
+        <h2><span class="step">3</span>裁切预览</h2>
+        <div class="row" style="margin-bottom:10px">
+          <span class="meta">花钱之前先确认裁切范围对不对</span>
+        </div>
+        <div class="stage" style="min-height:160px">
+          <img id="preview" alt="裁切预览" style="max-width:100%;max-height:320px;display:none">
+          <span id="previewIdle" class="meta">先在左边框选一个角色</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">4</span>生成并查看输出</h2>
+        <div class="row" style="margin-bottom:10px">
+          <button id="btnRun" class="primary" disabled>开始生成</button>
+          <label class="inline"><input id="chkTrim" type="checkbox" checked> 裁掉四周空白</label>
+        </div>
+        <div id="outIdle" class="meta">还没有输出。生成后会显示在这里（白底 + 原裁切图对照）。</div>
+        <div id="out" class="out"></div>
+        <details>
+          <summary>说明与注意</summary>
+          <p class="meta" style="margin:8px 0 0">
+            这是<strong>生成式改图</strong>：清晰度高，但模型可能微调服装细节（颜色、配饰）。
+            要求像素级完全一致时请用命令行 <code>--method local</code>，但它只适合插画/扁平背景。<br>
+            自动框选依赖模型给坐标，<strong>可能漏掉头顶或脚</strong>，所以默认会外扩一圈并让你先看预览；
+            不准就手动拖框。<br>
+            每次生成都会真的调用接口计费，对角色的每个框各一次。
+          </p>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 角色一致性校验：上传两张图判断是不是同一个角色 ===== -->
+  <div class="card">
+    <h2><span class="step">✓</span>角色一致性校验（上传两张图）</h2>
+    <div class="meta" style="margin-bottom:10px">
+      分别上传两张图，判断里面的角色是不是<strong>同一个角色</strong>。只看身份，不看姿势、朝向和背景；
+      模型判定之外还会附一个本地色彩指纹作为辅助参考。
+    </div>
+    <div class="cmp-grid">
+      <div class="cmp-slot">
+        <div class="label">图片 A</div>
+        <div class="cmp-drop" id="dropA">点击选择 / 拖入图片</div>
+        <input id="fileA" type="file" accept="image/*" hidden>
+        <img id="prevA" class="cmp-preview" alt="图片 A">
+        <div class="cmp-name" id="nameA"></div>
+      </div>
+      <div class="cmp-slot">
+        <div class="label">图片 B</div>
+        <div class="cmp-drop" id="dropB">点击选择 / 拖入图片</div>
+        <input id="fileB" type="file" accept="image/*" hidden>
+        <img id="prevB" class="cmp-preview" alt="图片 B">
+        <div class="cmp-name" id="nameB"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnCompare" class="primary" disabled>开始校验</button>
+      <button id="btnCompareClear" disabled>清空</button>
+      <span class="meta">校验会调用一次视觉模型（两张图在同一次请求里，不是两次）</span>
+    </div>
+    <div id="cmpResult" class="cmp-body"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const msgBox = $("msg");
+let session = null, imgW = 0, imgH = 0, image = null, scale = 1;
+let autoBoxes = [];    // 自动识别的框（0~1）
+let manualBoxes = [];  // 手动画的框（0~1）
+let selected = [];     // 当前勾选要生成的框
+
+function say(text, kind = "info") {
+  msgBox.className = "msg show " + kind;
+  msgBox.innerHTML = text;
+}
+function clearMsg() { msgBox.className = "msg"; }
+
+/* ---------- 画布：底图 + 各种框 ---------- */
+function draw() {
+  const cv = $("cv"), ctx = cv.getContext("2d");
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (!image) { return; }
+  ctx.drawImage(image, 0, 0, cv.width, cv.height);
+
+  // 自动框：虚线，勾选的填一层淡绿
+  autoBoxes.forEach((b, i) => {
+    const on = selected.some(s => s.source === "auto" && s.index === i);
+    const x = b.left * cv.width, y = b.top * cv.height;
+    const w = (b.right - b.left) * cv.width, h = (b.bottom - b.top) * cv.height;
+    if (on) { ctx.fillStyle = "rgba(47,111,79,.14)"; ctx.fillRect(x, y, w, h); }
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = on ? "#2f6f4f" : "#8a94a2";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+    ctx.fillStyle = on ? "#2f6f4f" : "#6b7684";
+    ctx.font = "13px system-ui, sans-serif";
+    ctx.fillText("自动 " + (i + 1), x + 4, Math.max(14, y - 5));
+  });
+
+  // 手动框：实线蓝
+  manualBoxes.forEach((b, i) => {
+    const x = b.left * cv.width, y = b.top * cv.height;
+    const w = (b.right - b.left) * cv.width, h = (b.bottom - b.top) * cv.height;
+    ctx.fillStyle = "rgba(37,99,201,.14)"; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "#2563c9"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = "#2563c9";
+    ctx.font = "13px system-ui, sans-serif";
+    ctx.fillText("手动 " + (i + 1), x + 4, Math.max(14, y - 5));
+  });
+
+  // 正在拖的框
+  if (drag) {
+    const x = Math.min(drag.x0, drag.x1) * cv.width, y = Math.min(drag.y0, drag.y1) * cv.height;
+    const w = Math.abs(drag.x1 - drag.x0) * cv.width, h = Math.abs(drag.y1 - drag.y0) * cv.height;
+    ctx.save(); ctx.setLineDash([4, 3]); ctx.strokeStyle = "#a32c2c"; ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h); ctx.restore();
+  }
+}
+
+/* ---------- 候选列表 ---------- */
+function renderPicks() {
+  const box = $("picks");
+  box.innerHTML = "";
+  const items = [
+    ...autoBoxes.map((b, i) => ({ b, i, source: "auto" })),
+    ...manualBoxes.map((b, i) => ({ b, i, source: "manual" })),
+  ];
+  if (!items.length) { return; }
+  items.forEach(({ b, i, source }) => {
+    const on = selected.some(s => s.source === source && s.index === i);
+    const el = document.createElement("div");
+    el.className = "pick" + (on ? " on" : "");
+    const sizes = `${(b.right - b.left).toFixed(2)}×${(b.bottom - b.top).toFixed(2)}`;
+    el.innerHTML = `<input type="checkbox" ${on ? "checked" : ""}>
+      <span class="nm">${source === "auto" ? "自动" : "手动"} ${i + 1}${b.name ? " · " + b.name : ""}</span>
+      <span class="box">${sizes}</span>`;
+    el.querySelector("input").addEventListener("change", (e) => {
+      if (e.target.checked) { selected.push({ source, index: i, box: b }); }
+      else { selected = selected.filter(s => !(s.source === source && s.index === i)); }
+      renderPicks(); draw(); refreshPreview();
+    });
+    box.appendChild(el);
+  });
+}
+
+/* ---------- 预览：只取第一个勾选的框 ---------- */
+async function refreshPreview() {
+  const img = $("preview"), idle = $("previewIdle");
+  if (!session || !selected.length) {
+    img.style.display = "none"; idle.style.display = ""; return;
+  }
+  const box = selected[0].box;
+  try {
+    const res = await fetch("/api/preview", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session, box }),
+    });
+    if (!res.ok) { throw new Error(await res.text()); }
+    const blob = await res.blob();
+    img.src = URL.createObjectURL(blob);
+    img.style.display = ""; idle.style.display = "none";
+  } catch (e) {
+    img.style.display = "none"; idle.style.display = "";
+    idle.textContent = "预览失败：" + e.message;
+  }
+}
+
+/* ---------- 上传 ---------- */
+$("drop").addEventListener("click", () => $("file").click());
+$("drop").addEventListener("dragover", (e) => { e.preventDefault(); $("drop").classList.add("over"); });
+$("drop").addEventListener("dragleave", () => $("drop").classList.remove("over"));
+$("drop").addEventListener("drop", (e) => {
+  e.preventDefault(); $("drop").classList.remove("over");
+  if (e.dataTransfer.files.length) { upload(e.dataTransfer.files[0]); }
+});
+$("file").addEventListener("change", (e) => {
+  if (e.target.files.length) { upload(e.target.files[0]); }
+});
+
+async function upload(file) {
+  clearMsg(); say('<span class="spin"></span>正在上传…');
+  const form = new FormData();
+  form.append("image", file);
+  try {
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    const data = await res.json();
+    if (!data.ok) { throw new Error(data.error); }
+    session = data.id; imgW = data.width; imgH = data.height;
+    autoBoxes = []; manualBoxes = []; selected = [];
+    await loadImage(data.preview);
+    $("srcMeta").textContent =
+      `已上传：${file.name} · 原始 ${data.original_format} ${imgW}×${imgH}`;
+    $("btnAuto").disabled = false; $("btnClear").disabled = false;
+    $("btnRun").disabled = true;
+    $("out").innerHTML = ""; $("outIdle").style.display = "";
+    renderPicks(); draw(); refreshPreview();
+    say("图片已就绪。点「自动框选角色」，或直接在图上拖动鼠标手动框选。", "ok");
+  } catch (e) { say("上传失败：" + e.message, "err"); }
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => {
+      image = im;
+      // 画布按容器宽度等比缩放显示，但内部坐标始终用 0~1，切换尺寸不影响框
+      const maxW = Math.min(640, im.width);
+      scale = maxW / im.width;
+      const cv = $("cv");
+      cv.width = Math.round(im.width * scale);
+      cv.height = Math.round(im.height * scale);
+      resolve();
+    };
+    im.onerror = () => reject(new Error("图片无法显示"));
+    im.src = url;
+  });
+}
+
+/* ---------- 自动框选 ---------- */
+$("margin").addEventListener("input", () => {
+  $("marginVal").textContent = Number($("margin").value).toFixed(2) + "×";
+});
+
+$("btnAuto").addEventListener("click", async () => {
+  if (!session) { return; }
+  clearMsg();
+  say('<span class="spin"></span>正在识别角色…（这一步会调用一次视觉模型）');
+  $("btnAuto").disabled = true;
+  try {
+    const res = await fetch("/api/analyze", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session, margin: Number($("margin").value) }),
+    });
+    const data = await res.json();
+    if (!data.ok) { throw new Error(data.error); }
+    autoBoxes = data.characters || [];
+    manualBoxes = []; 
+    if (!autoBoxes.length) {
+      say("没有识别到明确的角色。请在图上手动拖动框选。", "warn");
+    } else {
+      // 默认勾选全部候选（可取消）
+      selected = $("chkAll").checked
+        ? autoBoxes.map((b, i) => ({ source: "auto", index: i, box: b }))
+        : [];
+      const names = autoBoxes.map(b => b.name).join("、");
+      say(`识别到 ${autoBoxes.length} 个角色：${names}。虚线框是识别结果，` +
+          `已按 ${Number($("margin").value).toFixed(2)}× 外扩。确认或调整后再生成。`, "ok");
+    }
+    $("btnRun").disabled = selected.length === 0;
+    renderPicks(); draw(); refreshPreview();
+  } catch (e) {
+    say("识别失败：" + e.message, "err");
+  } finally {
+    $("btnAuto").disabled = false;
+  }
+});
+
+/* ---------- 手动拖框 ---------- */
+let drag = null;
+function canvasPos(ev) {
+  const cv = $("cv"), r = cv.getBoundingClientRect();
+  return {
+    x: Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)),
+    y: Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)),
+  };
+}
+$("cv").addEventListener("pointerdown", (ev) => {
+  if (!image) { return; }
+  const p = canvasPos(ev);
+  drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+  $("cv").setPointerCapture(ev.pointerId);
+  draw();
+});
+$("cv").addEventListener("pointermove", (ev) => {
+  if (!drag) { return; }
+  const p = canvasPos(ev);
+  drag.x1 = p.x; drag.y1 = p.y;
+  draw();
+});
+$("cv").addEventListener("pointerup", (ev) => {
+  if (!drag) { return; }
+  const left = Math.min(drag.x0, drag.x1), right = Math.max(drag.x0, drag.x1);
+  const top = Math.min(drag.y0, drag.y1), bottom = Math.max(drag.y0, drag.y1);
+  drag = null;
+  // 太小的框多半是误点，忽略
+  if (right - left > 0.02 && bottom - top > 0.02) {
+    const box = { left, top, right, bottom, source: "manual" };
+    manualBoxes.push(box);
+    selected.push({ source: "manual", index: manualBoxes.length - 1, box });
+    $("btnRun").disabled = false;
+  }
+  renderPicks(); draw(); refreshPreview();
+});
+
+$("btnClear").addEventListener("click", () => {
+  autoBoxes = []; manualBoxes = []; selected = [];
+  $("btnRun").disabled = true;
+  $("out").innerHTML = ""; $("outIdle").style.display = "";
+  renderPicks(); draw(); refreshPreview();
+  say("已清空所有框。", "info");
+});
+
+/* ---------- 生成 ---------- */
+$("btnRun").addEventListener("click", async () => {
+  if (!session || !selected.length) { return; }
+  clearMsg();
+  say(`<span class="spin"></span>正在生成 ${selected.length} 个角色，每个都要调用一次接口，请稍候…（约 40-60 秒/个）`);
+  $("btnRun").disabled = true;
+  $("outIdle").style.display = "none";
+  try {
+    const res = await fetch("/api/run", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session,
+        boxes: selected.map(s => ({ box: s.box, name: s.box.name || "" })),
+        trim: $("chkTrim").checked,
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) { throw new Error(data.error); }
+    renderOutputs(data.results);
+    const bad = data.results.filter(r => !r.ok).length;
+    if (bad === 0) { say(`生成完成，共 ${data.results.length} 个角色。`, "ok"); }
+    else { say(`完成，其中 ${bad} 个失败，详见下方说明。`, "warn"); }
+  } catch (e) {
+    say("生成失败：" + e.message, "err");
+  } finally {
+    $("btnRun").disabled = selected.length === 0;
+  }
+});
+
+function renderOutputs(results) {
+  const out = $("out");
+  out.innerHTML = "";
+  results.forEach((r) => {
+    const fig = document.createElement("figure");
+    if (r.ok && r.output) {
+      const [generated, input] = r.output;
+      fig.innerHTML =
+        `<img src="${generated}" alt="输出">` +
+        `<figcaption><b>${r.name || r.label}</b>` +
+        `输出 ${r.size} · 文件夹 ${r.folder}<br>` +
+        `<a href="${generated}" target="_blank">打开输出图</a> · ` +
+        `<a href="${input}" target="_blank">看裁切输入</a></figcaption>`;
+    } else {
+      fig.innerHTML =
+        `<div style="padding:16px;color:var(--error)">第 ${r.index} 个失败</div>` +
+        `<figcaption><b>${r.label || "角色"}</b>${r.error || r.status || ""}</figcaption>`;
+    }
+    out.appendChild(fig);
+  });
+}
+
+/* ---------- 初始化 ---------- */
+fetch("/api/info").then(r => r.json()).then(d => {
+  if (d.ok) {
+    document.querySelector(".sub").textContent =
+      `视觉模型 ${d.vision_model} · 生图模型 ${d.image_model}。第 1 步上传 → 第 2 步框选 → 第 3 步生成。密钥只留在本机服务端。`;
+  }
+});
+draw();
+/* ================= 角色一致性校验（两张图） ================= */
+const cmp = { a: null, b: null };
+
+function cmpDrop(slot) { return $(slot === "a" ? "dropA" : "dropB"); }
+function cmpFile(slot) { return $(slot === "a" ? "fileA" : "fileB"); }
+function cmpPrev(slot) { return $(slot === "a" ? "prevA" : "prevB"); }
+function cmpName(slot) { return $(slot === "a" ? "nameA" : "nameB"); }
+
+function bindCmpSlot(slot) {
+  const drop = cmpDrop(slot), file = cmpFile(slot);
+  drop.addEventListener("click", () => file.click());
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault(); drop.classList.remove("over");
+    if (e.dataTransfer.files.length) { uploadForCompare(slot, e.dataTransfer.files[0]); }
+  });
+  file.addEventListener("change", (e) => {
+    if (e.target.files.length) { uploadForCompare(slot, e.target.files[0]); }
+  });
+}
+
+async function uploadForCompare(slot, file) {
+  const name = cmpName(slot);
+  name.textContent = "上传中…";
+  const form = new FormData();
+  form.append("image", file);
+  try {
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    const data = await res.json();
+    if (!data.ok) { throw new Error(data.error); }
+    cmp[slot] = data;
+    const img = cmpPrev(slot);
+    img.src = data.preview;
+    img.style.display = "block";
+    cmpDrop(slot).style.display = "none";
+    name.textContent = `${file.name} · ${data.width}×${data.height}` +
+      (data.banner_trimmed_px ? ` · 已裁掉底部信息条 ${data.banner_trimmed_px}px` : "");
+  } catch (e) {
+    cmp[slot] = null;
+    name.textContent = "上传失败：" + e.message;
+  }
+  updateCompareButtons();
+}
+
+function updateCompareButtons() {
+  const ready = cmp.a && cmp.b;
+  $("btnCompare").disabled = !ready;
+  $("btnCompareClear").disabled = !(cmp.a || cmp.b);
+}
+
+$("btnCompareClear").addEventListener("click", () => {
+  cmp.a = null; cmp.b = null;
+  ["a", "b"].forEach((slot) => {
+    cmpPrev(slot).style.display = "none";
+    cmpPrev(slot).removeAttribute("src");
+    cmpDrop(slot).style.display = "block";
+    cmpName(slot).textContent = "";
+    cmpFile(slot).value = "";
+  });
+  $("cmpResult").innerHTML = "";
+  updateCompareButtons();
+});
+
+$("btnCompare").addEventListener("click", async () => {
+  if (!cmp.a || !cmp.b) { return; }
+  const out = $("cmpResult");
+  out.innerHTML = '<div class="meta"><span class="spin"></span>正在比对两张图的角色…（调用一次视觉模型）</div>';
+  $("btnCompare").disabled = true;
+  try {
+    const res = await fetch("/api/compare", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_a: cmp.a.id, session_b: cmp.b.id }),
+    });
+    const data = await res.json();
+    if (!data.ok) { throw new Error(data.error); }
+    renderCompare(data);
+  } catch (e) {
+    out.innerHTML = `<div class="msg err show">校验失败：${e.message}</div>`;
+  } finally {
+    updateCompareButtons();
+  }
+});
+
+function swatches(colours) {
+  if (!colours || !colours.length) { return '<span class="meta">无</span>'; }
+  return '<div class="swatches">' + colours.map(c => {
+    const [r, g, b] = c.rgb;
+    return `<span class="sw" title="rgb(${r},${g},${b}) ${(c.share * 100).toFixed(0)}%" ` +
+           `style="background:rgb(${r},${g},${b})"></span>`;
+  }).join("") + "</div>";
+}
+
+function renderCompare(d) {
+  const label = { same: "同一个角色", different: "不是同一个角色", uncertain: "无法确定" }[d.verdict] || "无法确定";
+  const pct = Math.round((d.confidence || 0) * 100);
+  const distance = (d.palette_distance === null || d.palette_distance === undefined)
+    ? `<span class="meta">${d.palette_note || "不适用"}</span>`
+    : `<span class="meta">本地主色距离 <strong>${d.palette_distance}</strong>（0 最像；仅作辅助）</span>`;
+  const list = (items, cls) => (items && items.length)
+    ? `<ul class="cmp-list ${cls}">${items.map(x => `<li>${x}</li>`).join("")}</ul>`
+    : '<div class="meta">无</div>';
+
+  $("cmpResult").innerHTML = `
+    <div class="row" style="gap:10px">
+      <span class="verdict ${d.verdict}">${label}</span>
+      <span class="meta">模型置信度 ${pct}%（${d.model || ""}）</span>
+    </div>
+    <div class="conf-bar" style="max-width:320px"><i style="width:${pct}%"></i></div>
+    <div class="cmp-cols">
+      <div>
+        <div class="meta">图片 A 的角色</div>
+        <div>${d.character_a || "—"}</div>
+        <div class="meta">主色（已排除背景）</div>
+        ${swatches(d.palette_a)}
+      </div>
+      <div>
+        <div class="meta">图片 B 的角色</div>
+        <div>${d.character_b || "—"}</div>
+        <div class="meta">主色（已排除背景）</div>
+        ${swatches(d.palette_b)}
+      </div>
+    </div>
+    <div class="cmp-cols">
+      <div>
+        <div class="meta" style="margin-top:10px">相符特征</div>
+        ${list(d.matching_features, "")}
+      </div>
+      <div>
+        <div class="meta" style="margin-top:10px">不同特征</div>
+        ${list(d.differences, "diff")}
+      </div>
+    </div>
+    <div style="margin-top:12px">${distance}</div>
+    ${d.notes ? `<div class="meta" style="margin-top:6px">备注：${d.notes}</div>` : ""}
+  `;
+}
+
+["a", "b"].forEach(bindCmpSlot);
+updateCompareButtons();
+</script>
+</body>
+</html>

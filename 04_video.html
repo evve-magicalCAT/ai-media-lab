@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MiniMax H3 视频生成</title>
+<style>
+  /* 全部样式写在这里，不依赖任何外部库，断网也能用 */
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --line: #e2e5ea;
+    --text: #1c2430;
+    --muted: #6b7684;
+    --brand: #2f6f4f;
+    --brand-soft: #eaf3ee;
+    --warn: #8a5a00;
+    --warn-soft: #fdf3e2;
+    --error: #a32c2c;
+    --error-soft: #fdecec;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 48px;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin-bottom: 20px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 14px; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .hint { color: var(--muted); font-weight: 400; font-size: 13px; margin-top: 6px; }
+  textarea {
+    width: 100%; min-height: 120px; padding: 10px;
+    border: 1px solid var(--line); border-radius: 8px;
+    font: inherit; resize: vertical;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; }
+  .field { flex: 1 1 170px; }
+  select, input[type=number] {
+    width: 100%; padding: 8px 10px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; color: inherit; font: inherit;
+  }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .check input { width: 16px; height: 16px; }
+  .check label { margin: 0; font-weight: 400; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+  button {
+    padding: 10px 20px; border-radius: 8px; border: 1px solid var(--line);
+    background: #fff; color: inherit; font: inherit; cursor: pointer;
+  }
+  button.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .grid { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; }
+  .grid dt { color: var(--muted); }
+  .grid dd { margin: 0; word-break: break-all; }
+  video { width: 100%; border-radius: 8px; background: #000; display: block; }
+  #banner { display: none; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; }
+  #banner.error { display: block; background: var(--error-soft); color: var(--error); }
+  #banner.warn { display: block; background: var(--warn-soft); color: var(--warn); }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    background: var(--brand-soft); color: var(--brand); font-size: 13px;
+  }
+  #log {
+    margin: 0; padding: 12px; max-height: 180px; overflow: auto;
+    background: #fbfcfd; border: 1px solid var(--line); border-radius: 8px;
+    font: 12px/1.7 Consolas, Menlo, monospace; white-space: pre-wrap; color: var(--muted);
+  }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MiniMax H3 视频生成</h1>
+  <div class="sub">模型：<span id="model">读取中…</span>　·　浏览器 → 本机 Python → MiniMax，密钥不出本机</div>
+
+  <div id="banner"></div>
+
+  <div class="card">
+    <h2>1. 填写生成参数</h2>
+    <label for="prompt">提示词</label>
+    <textarea id="prompt" placeholder="描述你想生成的画面，例如：一只橘猫在窗台上慢慢伸懒腰，晨光斜照，镜头缓慢推进，画面稳定，不要剪辑"></textarea>
+    <div class="hint">画面内容、镜头运动、光线和"不要什么"都可以写进去，写得越具体结果越稳。</div>
+
+    <div class="row">
+      <div class="field">
+        <label for="duration">视频时长（秒）</label>
+        <input type="number" id="duration" step="1" value="5">
+        <div class="hint" id="durationHint">—</div>
+      </div>
+      <div class="field">
+        <label for="resolution">分辨率</label>
+        <select id="resolution"></select>
+        <div class="hint">越高越清晰，也越贵。</div>
+      </div>
+      <div class="field">
+        <label for="ratio">宽高比</label>
+        <select id="ratio"></select>
+        <div class="hint">文生视频必须选一个固定比例，不能选"自适应"。</div>
+      </div>
+    </div>
+
+    <div class="check">
+      <input type="checkbox" id="audio" checked>
+      <label for="audio">含音频（原生立体声）</label>
+    </div>
+    <div class="hint">
+      注意：MiniMax H3 天生就会生成 32kHz 立体声，接口里<strong>没有</strong>"静音"参数。
+      取消勾选时，程序会在提示词末尾追加一句"完全静音"的要求，并让播放器静音——
+      最终是否真的无声由模型决定，不保证 100% 生效。
+    </div>
+
+    <div class="check">
+      <input type="checkbox" id="dryRun">
+      <label for="dryRun">只预览（dry-run）：只把请求计划存到磁盘，不联网、不花钱</label>
+    </div>
+
+    <div class="actions">
+      <button id="btnSubmit" class="primary">生成视频</button>
+      <button id="btnRefresh">查询最新任务</button>
+      <button id="btnReset">清空提示词</button>
+    </div>
+    <div class="hint">生成一版通常要 1～3 分钟，提交后页面每 8 秒自动查询一次，可以关掉页面稍后再回来查。</div>
+  </div>
+
+  <div class="card">
+    <h2>2. 任务状态</h2>
+    <dl class="grid" id="stateBox">
+      <dt>状态</dt><dd class="empty" id="fStatus">还没有查询。</dd>
+      <dt>任务 ID</dt><dd id="fTask">—</dd>
+      <dt>本机目录</dt><dd id="fFolder">—</dd>
+      <dt>参数</dt><dd id="fParams">—</dd>
+      <dt>提示词</dt><dd id="fPrompt">—</dd>
+      <dt>错误</dt><dd id="fError">—</dd>
+    </dl>
+  </div>
+
+  <div class="card" id="videoCard" style="display:none">
+    <h2>3. 生成结果</h2>
+    <video id="video" controls playsinline></video>
+  </div>
+
+  <div class="card">
+    <h2>操作记录</h2>
+    <pre id="log">（暂无）</pre>
+  </div>
+</div>
+
+<script>
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var timer = null;      // 自动查询的定时器
+  var current = null;    // 当前跟踪的运行目录名
+
+  // 状态码翻译，和后端 run.json 里的 status 字段一一对应
+  var LABELS = {
+    planned: "已预览（没有真的提交，不花钱）",
+    submitting: "正在提交…",
+    submission_unknown: "提交结果未知：先去查询，别急着再提交",
+    submitted: "已提交，排队中",
+    queued: "排队中",
+    running: "生成中…",
+    download_failed: "已生成，但下载失败：再点一次查询会重试下载",
+    succeeded: "完成",
+    failed: "失败",
+    cancelled: "已取消"
+  };
+  var FINAL = ["succeeded", "failed", "cancelled", "planned", "submission_unknown"];
+
+  function log(text) {
+    var box = $("log");
+    if (box.textContent === "（暂无）") box.textContent = "";
+    var line = new Date().toLocaleTimeString() + "  " + text + "\n";
+    box.textContent += line;
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function banner(message, kind) {
+    var box = $("banner");
+    box.className = message ? kind : "";
+    box.textContent = message || "";
+  }
+
+  // 统一的请求封装：后端永远回 JSON，这里把网络错误也变成同一种形状
+  function api(path, options) {
+    return fetch(path, options).then(function (res) {
+      return res.json().catch(function () { return { ok: false, error: "服务器返回了非 JSON 内容（HTTP " + res.status + "）" }; });
+    }).catch(function (err) {
+      return { ok: false, error: "连不上本机服务：" + err.message + "（请确认 python 04_video.py serve 还在运行）" };
+    });
+  }
+
+  function render(state, note) {
+    if (!state) {
+      $("fStatus").textContent = note || "还没有提交过任务。";
+      return;
+    }
+    $("fStatus").innerHTML = '<span class="badge">' + (LABELS[state.status] || state.status || "未知") + "</span>";
+    $("fTask").textContent = state.task_id || "—（预览不会产生任务 ID）";
+    $("fFolder").textContent = state.folder || "—";
+    $("fParams").textContent = [state.duration ? state.duration + " 秒" : null,
+      state.resolution, state.ratio,
+      state.audio === false ? "不含音频（提示词要求静音）" : "含音频"].filter(Boolean).join(" / ") || "—";
+    if (state.prompt) $("fPrompt").textContent = state.prompt;
+    $("fError").textContent = state.error || "—";
+
+    if (state.video) {
+      var v = $("video");
+      if (v.getAttribute("src") !== state.video) {
+        v.setAttribute("src", state.video);
+        v.muted = state.audio === false;  // 选了"不含音频"就先静音播放
+      }
+      $("videoCard").style.display = "block";
+    }
+  }
+
+  function stopPolling() {
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
+  function track(folder) {
+    current = folder;
+    if (folder) localStorage.setItem("mm_video_folder", folder);
+    else localStorage.removeItem("mm_video_folder");
+  }
+
+  function query(silent) {
+    var url = "/api/query" + (current ? "?folder=" + encodeURIComponent(current) : "");
+    return api(url).then(function (data) {
+      if (!data.ok) {
+        if (!silent) banner(data.error, "error");
+        return data;
+      }
+      if (data.note) $("fStatus").textContent = data.note;
+      render(data.state, data.note);
+      if (data.state && data.state.folder) track(data.state.folder);
+      if (!silent) log("已查询：" + (data.state ? (LABELS[data.state.status] || data.state.status) : data.note));
+      if (data.state && FINAL.indexOf(data.state.status) >= 0) stopPolling();
+      return data;
+    });
+  }
+
+  function startPolling() {
+    stopPolling();
+    timer = setInterval(function () { query(true); }, 8000);
+  }
+
+  function collect() {
+    return {
+      prompt: $("prompt").value,
+      duration: parseInt($("duration").value, 10),
+      resolution: $("resolution").value,
+      ratio: $("ratio").value,
+      audio: $("audio").checked,
+      dry_run: $("dryRun").checked
+    };
+  }
+
+  function doSubmit() {
+    var payload = collect();
+    if (!payload.prompt.trim()) { banner("请先填写提示词。", "warn"); return; }
+    if (!payload.duration) { banner("请填写视频时长（整数秒）。", "warn"); return; }
+    var dry = payload.dry_run;
+    banner("", "");
+    $("btnSubmit").disabled = true;
+    $("btnSubmit").textContent = dry ? "预览中…" : "提交中…";
+    log(dry ? "提交预览（不花钱）…" : "提交真实任务（会花钱）…");
+    api("/api/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (data) {
+      $("btnSubmit").disabled = false;
+      $("btnSubmit").textContent = "生成视频";
+      if (data.state && data.state.folder) { track(data.state.folder); render(data.state); }
+      if (!data.ok) {
+        banner(data.error, "error");
+        log("失败：" + data.error);
+        return;                       // 失败时不一定有任务，交给用户点"查询最新任务"决定下一步
+      }
+      banner(dry ? "预览已保存，没有产生任何费用。" : "已提交，正在自动查询进度…", dry ? "warn" : "");
+      log(dry ? "预览完成，目录：" + data.state.folder : "提交成功，任务 ID：" + data.state.task_id);
+      if (!(data.state && data.state.status === "planned")) startPolling();
+    });
+  }
+
+  function loadInfo() {
+    return api("/api/info").then(function (data) {
+      if (!data.ok) { banner(data.error, "error"); return; }
+      $("model").textContent = data.model;
+      $("duration").value = data.default_duration;
+      $("duration").min = data.duration_min;
+      $("duration").max = data.duration_max;
+      $("durationHint").textContent = data.duration_min + "～" + data.duration_max + " 秒的整数";
+      $("resolution").innerHTML = data.resolutions.map(function (r) {
+        return '<option value="' + r + '">' + r + "</option>";
+      }).join("");
+      $("resolution").value = data.default_resolution;
+      $("ratio").innerHTML = data.ratios.map(function (r) {
+        return '<option value="' + r + '">' + r + "</option>";
+      }).join("");
+      $("ratio").value = data.default_ratio;
+    });
+  }
+
+  // ---- 事件绑定 ----
+  $("btnSubmit").addEventListener("click", doSubmit);
+  $("btnRefresh").addEventListener("click", function () { query(false); });
+  $("btnReset").addEventListener("click", function () {
+    $("prompt").value = "";
+    $("prompt").focus();
+  });
+
+  // ---- 启动 ----
+  if (location.protocol === "file:") {
+    banner("你是直接双击打开的 html 文件。请改用终端运行「python 04_video.py serve」，" +
+      "再访问 http://127.0.0.1:8000 —— 直接打开文件时，浏览器不允许网页调用本机接口，提交会失败。", "error");
+  } else {
+    loadInfo().then(function () {
+      current = localStorage.getItem("mm_video_folder");
+      if (current) log("上次跟踪的任务：" + current);
+      query(true);   // 打开页面就顺手查一次，方便关掉页面后再回来看结果
+    });
+  }
+</script>
+</body>
+</html>
